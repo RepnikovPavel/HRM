@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>HRM raw-data viewer</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  nav button { margin: 0 8px 8px 0; padding: 4px 10px; cursor: pointer; }
+  nav button.active { background: #dde; font-weight: bold; }
+  #stats { color: #444; font-size: 0.9em; white-space: pre-wrap; }
+  #task { max-width: 60em; margin: 8px 0; background: #f7f7f7; border: 1px solid #ddd; padding: 6px 10px; }
+  #task summary { cursor: pointer; font-weight: bold; }
+  #task-text { white-space: pre-wrap; font-size: 0.9em; margin: 6px 0; }
+  .sample { display: inline-block; vertical-align: top; margin: 0 20px 20px 0; }
+  .sample h4 { margin: 4px 0; }
+  canvas { border: 1px solid #ccc; margin: 2px; image-rendering: pixelated; }
+  .pair { display: inline-block; text-align: center; font-size: 0.8em; color: #666; }
+</style>
+</head>
+<body>
+<h1>HRM raw-data viewer</h1>
+<nav id="datasets"></nav>
+<div id="stats"></div>
+<details id="task" open>
+  <summary>Task definition (RL notation)</summary>
+  <pre id="task-text"></pre>
+</details>
+<div id="samples"></div>
+<script type="module" src="/viewer/js/main.js"></script>
+</body>
+</html>

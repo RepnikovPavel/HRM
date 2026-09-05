@@ -36,3 +36,6 @@ python dataset/build_sudoku_dataset.py --output-dir data/sudoku-extreme-1k-aug-1
 python dataset/build_maze_dataset.py  # 1000 examples
 
 ```
+
+
+The data visualization tool should contain a note about the data in the context of the task.: what is an observation, what is an action, what is or what is considered the fulfillment of a task, what are the rules of the data (for example, it is valid if the data is manipulation), which states are prohibited, which are allowed. when describing RL tasks, use the standard generally accepted RL notation. it seems that pictures alone are not enough in visualization, you open it and it is not clear what the task is and what needs to be done, what the mathematical formulation of the problem is, just the pictures don't say anything.
