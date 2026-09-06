@@ -7,7 +7,6 @@ import numpy as np
 from argdantic import ArgParser
 from pydantic import BaseModel
 from tqdm import tqdm
-from huggingface_hub import hf_hub_download
 
 from common import PuzzleDatasetMetadata
 
@@ -16,12 +15,13 @@ cli = ArgParser()
 
 
 class DataProcessConfig(BaseModel):
-    source_repo: str = "sapientinc/sudoku-extreme"
+    source_dir: str
     output_dir: str = "data/sudoku-extreme-full"
 
     subsample_size: Optional[int] = None
     min_difficulty: Optional[int] = None
     num_aug: int = 0
+    seed: int = 0
 
 
 def shuffle_sudoku(board: np.ndarray, solution: np.ndarray):
@@ -62,7 +62,7 @@ def convert_subset(set_name: str, config: DataProcessConfig):
     inputs = []
     labels = []
     
-    with open(hf_hub_download(config.source_repo, f"{set_name}.csv", repo_type="dataset"), newline="") as csvfile:
+    with open(os.path.join(config.source_dir, f"{set_name}.csv"), newline="") as csvfile:
         reader = csv.reader(csvfile)
         next(reader)  # Skip header
         for source, q, a, rating in reader:
@@ -161,6 +161,7 @@ def convert_subset(set_name: str, config: DataProcessConfig):
 
 @cli.command(singleton=True)
 def preprocess_data(config: DataProcessConfig):
+    np.random.seed(config.seed)
     convert_subset("train", config)
     convert_subset("test", config)
 

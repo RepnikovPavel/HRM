@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import yaml
 import os
 
@@ -12,7 +12,9 @@ from pretrain import PretrainConfig, init_train_state, evaluate, create_dataload
 
 class EvalConfig(pydantic.BaseModel):
     checkpoint: str
-    
+    global_batch_size: Optional[int] = None
+    data_path: Optional[str] = None
+
     save_outputs: List[str] = ["inputs", "labels", "puzzle_identifiers", "logits", "q_halt_logits", "q_continue_logits"]
 
 
@@ -36,6 +38,11 @@ def launch():
 
         config.eval_save_outputs = eval_cfg.save_outputs
         config.checkpoint_path = os.path.dirname(eval_cfg.checkpoint)
+        config.eval_test_examples = None
+        if eval_cfg.global_batch_size is not None:
+            config.global_batch_size = eval_cfg.global_batch_size
+        if eval_cfg.data_path is not None:
+            config.data_path = eval_cfg.data_path
 
     # Dataloader
     train_loader, train_metadata = create_dataloader(config, "train", test_set_mode=False, epochs_per_iter=1, global_batch_size=config.global_batch_size, rank=RANK, world_size=WORLD_SIZE)

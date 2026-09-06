@@ -28,3 +28,30 @@
 - The build scripts (`dataset/build_*.py`) still reference
   `dataset/raw-data/...` inside the repo; pointing them at
   `$DATA_ROOT/raw-data` is task 3 of the specification.
+
+## Training stage (task 2)
+
+- adam-atan2 0.0.3 (wheel AND sdist) hardcodes
+  `NVIDIA_SUPPORTED_ARCHS = {"80","86","89","90"}` — no sm_120 kernel for
+  RTX 5060 Ti, fails with `cudaErrorNoKernelImageForDevice`. The training
+  Dockerfiles patch the sdist at build time.
+- torch 2.9 `cache_dir_utils.default_cache_dir()` calls
+  `getpass.getuser()` before reading `TORCHINDUCTOR_CACHE_DIR`, so
+  `docker run --user <uid>` without a passwd entry crashes
+  `torch.compile` at import; the images create uid 1000 (`useradd hrm`).
+- Hydra struct mode: `checkpoint_path` must exist in
+  `config/cfg_pretrain.yaml` to be overridable from CLI.
+- Memory allocator: torch 2.9 warns `PYTORCH_CUDA_ALLOC_CONF` is
+  deprecated, but the replacement `PYTORCH_ALLOC_CONF` is silently IGNORED
+  in 2.9.1 — a full training run OOMed with it at gbs 2176 while the old
+  variable works. We ship `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+  despite the deprecation warning; expandable segments let bigger batches
+  survive ACT halt-step memory spikes (2176 OK, 2304 still OOM).
+- torch.compile mode `reduce-overhead` (CUDA graphs) initially crashed
+  with "accessing tensor output of CUDAGraphs that has been overwritten";
+  fixed by cloning the ACT carry between steps in `pretrain.py`. Result
+  measured: 0% speedup — the workload is GEMM-bound, not launch-bound.
+- `eval_interval` must divide `epochs` (assert in pretrain.py).
+- In-training eval on the full 422k-example sudoku test set costs more
+  than the training it monitors; `eval_test_examples=20000` keeps it
+  cheap (final `evaluate.py` always runs the full set).

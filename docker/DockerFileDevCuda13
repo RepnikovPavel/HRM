@@ -1,0 +1,36 @@
+FROM pytorch/pytorch:2.12.1-cuda13.0-cudnn9-devel
+
+# dev tools
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       git curl wget vim nano htop tmux jq less zip unzip rsync \
+       openssh-client openssh-server iproute2 net-tools dnsutils \
+       build-essential gdb nvtop pciutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# torch's cache_dir_utils calls getpass.getuser() unconditionally, which needs
+# a passwd entry for the --user uid used by our wrapper scripts
+RUN getent passwd 1000 >/dev/null || useradd -u 1000 -m hrm
+
+# Bypass PEP 668 "externally-managed-environment" restriction
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+# allocator behavior needed for ACT memory spikes; set once, not per-command
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# adam-atan2 0.0.3 hardcodes NVIDIA_SUPPORTED_ARCHS = {"80","86","89","90"} in
+# setup.py; RTX 5060 Ti needs sm_120, so build the sdist with an extended list
+# --no-build-isolation: with isolation pip hides the host torch and the
+# extension silently builds without its CUDA backend
+RUN pip download adam-atan2 --no-binary :all: --no-deps -q -d /tmp/aa2 \
+    && cd /tmp/aa2 && tar xzf adam_atan2-*.tar.gz \
+    && sed -i 's/{"80", "86", "89", "90"}/{"80", "86", "89", "90", "120"}/' adam_atan2-*/setup.py \
+    && pip install --no-cache-dir --no-build-isolation ./adam_atan2-0.0.3 \
+    && pip install --no-cache-dir einops coolname pydantic argdantic omegaconf hydra-core \
+    && rm -rf /tmp/aa2
+
+# hrmfast kernels go into the system python (no PYTHONPATH juggling)
+COPY hrmfast /tmp/hrmfast
+RUN pip install --no-cache-dir --no-build-isolation /tmp/hrmfast && rm -rf /tmp/hrmfast
+
+WORKDIR /work

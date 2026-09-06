@@ -1,6 +1,8 @@
 import os
 import json
 
+from typing import Optional
+
 import numpy as np
 import pydantic
 
@@ -49,6 +51,8 @@ class PuzzleDatasetConfig(pydantic.BaseModel):
     rank: int
     num_replicas: int
 
+    test_examples_limit: Optional[int] = None
+
 
 class PuzzleDataset(IterableDataset):
     def __init__(self, config: PuzzleDatasetConfig, split: str = "train"):
@@ -91,6 +95,21 @@ class PuzzleDataset(IterableDataset):
                 field_name: np.load(os.path.join(self.config.dataset_path, self.split, f"{set_name}__{field_name}.npy"), mmap_mode=mmap_mode)
                 for field_name, mmap_mode in field_mmap_modes.items()
             }
+
+        # In-training monitoring eval can run on a prefix of the test set;
+        # the final evaluate.py pass always uses the full set
+        limit = self.config.test_examples_limit
+        if self.config.test_set_mode and limit is not None:
+            for set_name, dataset in self._data.items():
+                total = len(dataset["inputs"])
+                if total <= limit:
+                    continue
+                cut = int(np.searchsorted(dataset["puzzle_indices"], limit, side="left"))
+                end = int(dataset["puzzle_indices"][cut])
+                dataset["inputs"] = dataset["inputs"][:end]
+                dataset["labels"] = dataset["labels"][:end]
+                dataset["puzzle_identifiers"] = dataset["puzzle_identifiers"][:cut]
+                dataset["puzzle_indices"] = dataset["puzzle_indices"][:cut + 1]
 
     def _collate_batch(self, batch):
         # Convert dtype

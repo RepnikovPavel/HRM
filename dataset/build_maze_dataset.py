@@ -8,7 +8,6 @@ import numpy as np
 from argdantic import ArgParser
 from pydantic import BaseModel
 from tqdm import tqdm
-from huggingface_hub import hf_hub_download
 
 from common import PuzzleDatasetMetadata, dihedral_transform
 
@@ -20,11 +19,12 @@ cli = ArgParser()
 
 
 class DataProcessConfig(BaseModel):
-    source_repo: str = "sapientinc/maze-30x30-hard-1k"
+    source_dir: str
     output_dir: str = "data/maze-30x30-hard-1k"
 
     subsample_size: Optional[int] = None
     aug: bool = False
+    seed: int = 0
 
 
 def convert_subset(set_name: str, config: DataProcessConfig):
@@ -34,7 +34,7 @@ def convert_subset(set_name: str, config: DataProcessConfig):
     inputs = []
     labels = []
     
-    with open(hf_hub_download(config.source_repo, f"{set_name}.csv", repo_type="dataset"), newline="") as csvfile:  # type: ignore
+    with open(os.path.join(config.source_dir, f"{set_name}.csv"), newline="") as csvfile:  # type: ignore
         reader = csv.reader(csvfile)
         next(reader)  # Skip header
         for source, q, a, rating in reader:
@@ -134,6 +134,7 @@ def convert_subset(set_name: str, config: DataProcessConfig):
 
 @cli.command(singleton=True)
 def preprocess_data(config: DataProcessConfig):
+    np.random.seed(config.seed)
     convert_subset("train", config)
     convert_subset("test", config)
 

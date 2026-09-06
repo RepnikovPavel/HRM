@@ -1,0 +1,8 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# NOTE: build requires torch (torch.utils.cpp_extension). pip's default build
+# isolation hides the host torch — always install with:
+#   pip install --no-build-isolation ./hrmfast/
+# or use scripts/build_hrmfast.sh (docker).

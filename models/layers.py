@@ -7,8 +7,18 @@ import torch.nn.functional as F
 try:
     from flash_attn_interface import flash_attn_func  # type: ignore[import]
 except ImportError:
-    # Fallback to FlashAttention 2
-    from flash_attn import flash_attn_func  # type: ignore[import]
+    try:
+        from flash_attn import flash_attn_func  # type: ignore[import]
+    except ImportError:
+        flash_attn_func = None  # type: ignore[assignment]
+
+try:
+    from hrmfast import SwiGLUFused, LinearFused, LinearResidRmsNorm, AttentionFused
+except ImportError:
+    SwiGLUFused = None
+    LinearFused = None
+    LinearResidRmsNorm = None
+    AttentionFused = None
 
 from models.common import trunc_normal_init_
 
@@ -109,11 +119,15 @@ class Attention(nn.Module):
         self.qkv_proj = CastedLinear(self.hidden_size, (self.num_heads + 2 * self.num_key_value_heads) * self.head_dim, bias=False)
         self.o_proj = CastedLinear(self.output_size, self.hidden_size, bias=False)
 
-    def forward(self, cos_sin: CosSin, hidden_states: torch.Tensor) -> torch.Tensor:
+    def attn_core(self, cos_sin: CosSin, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, _ = hidden_states.shape
 
         # hidden_states: [bs, seq_len, num_heads, head_dim]
-        qkv = self.qkv_proj(hidden_states)
+        if LinearFused is not None and hidden_states.is_cuda and hidden_states.dtype == torch.bfloat16:
+            w = self.qkv_proj.weight.to(torch.bfloat16)
+            qkv = LinearFused.apply(hidden_states.reshape(-1, self.hidden_size), w).view(batch_size, seq_len, -1)
+        else:
+            qkv = self.qkv_proj(hidden_states)
 
         # Split head
         qkv = qkv.view(batch_size, seq_len, self.num_heads + 2 * self.num_key_value_heads, self.head_dim)
@@ -127,12 +141,24 @@ class Attention(nn.Module):
             query, key = apply_rotary_pos_emb(query, key, cos, sin)
 
         # flash attn
-        attn_output = flash_attn_func(q=query, k=key, v=value, causal=self.causal)
-        if isinstance(attn_output, tuple):  # fa2 and fa3 compatibility
-            attn_output = attn_output[0]
+        if (AttentionFused is not None and not self.causal and query.is_cuda
+                and query.dtype == torch.bfloat16 and self.head_dim == 64
+                and seq_len <= 128 and query.stride(2) == self.head_dim
+                and key.stride(2) == self.head_dim and value.stride(2) == self.head_dim):
+            attn_output = AttentionFused.apply(query, key, value, self.head_dim ** -0.5)
+        elif flash_attn_func is not None:
+            attn_output = flash_attn_func(q=query, k=key, v=value, causal=self.causal)
+            if isinstance(attn_output, tuple):  # fa2 and fa3 compatibility
+                attn_output = attn_output[0]
+        else:
+            attn_output = F.scaled_dot_product_attention(
+                query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2),
+                is_causal=self.causal).transpose(1, 2)
 
-        attn_output = attn_output.view(batch_size, seq_len, self.output_size)  # type: ignore
-        return self.o_proj(attn_output)
+        return attn_output.view(batch_size, seq_len, self.output_size)  # type: ignore
+
+    def forward(self, cos_sin: CosSin, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.o_proj(self.attn_core(cos_sin, hidden_states))
 
 
 class SwiGLU(nn.Module):
@@ -143,9 +169,16 @@ class SwiGLU(nn.Module):
         self.gate_up_proj = CastedLinear(hidden_size, inter * 2, bias=False)
         self.down_proj    = CastedLinear(inter, hidden_size, bias=False)
 
-    def forward(self, x):
+    def gate_up(self, x):
+        if SwiGLUFused is not None and x.is_cuda and x.dtype == torch.bfloat16:
+            w = self.gate_up_proj.weight.to(torch.bfloat16)
+            wg, wu = w.chunk(2, dim=0)
+            return SwiGLUFused.apply(x.reshape(-1, x.shape[-1]), wg.contiguous(), wu.contiguous()).view(*x.shape[:-1], -1)
         gate, up = self.gate_up_proj(x).chunk(2, dim=-1)
-        return self.down_proj(F.silu(gate) * up)
+        return F.silu(gate) * up
+
+    def forward(self, x):
+        return self.down_proj(self.gate_up(x))
 
 
 def rms_norm(hidden_states: torch.Tensor, variance_epsilon: float) -> torch.Tensor:

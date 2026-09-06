@@ -8,7 +8,7 @@ from torch import nn
 from pydantic import BaseModel
 
 from models.common import trunc_normal_init_
-from models.layers import rms_norm, SwiGLU, Attention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear
+from models.layers import rms_norm, SwiGLU, Attention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear, LinearResidRmsNorm
 from models.sparse_embedding import CastedSparseEmbedding
 
 
@@ -76,6 +76,20 @@ class HierarchicalReasoningModel_ACTV1Block(nn.Module):
 
     def forward(self, cos_sin: CosSin, hidden_states: torch.Tensor) -> torch.Tensor:
         # Post Norm
+        if LinearResidRmsNorm is not None and hidden_states.is_cuda and hidden_states.dtype == torch.bfloat16 \
+                and hidden_states.is_contiguous():
+            # fused: proj GEMM + residual add + rmsnorm in one pass (fwd and bwd)
+            attn_out = self.self_attn.attn_core(cos_sin=cos_sin, hidden_states=hidden_states)
+            hidden_states = LinearResidRmsNorm.apply(
+                attn_out.view(-1, attn_out.shape[-1]),
+                self.self_attn.o_proj.weight.to(torch.bfloat16),
+                hidden_states.view(-1, hidden_states.shape[-1]), self.norm_eps).view_as(hidden_states)
+            gate = self.mlp.gate_up(hidden_states)
+            hidden_states = LinearResidRmsNorm.apply(
+                gate.view(-1, gate.shape[-1]),
+                self.mlp.down_proj.weight.to(torch.bfloat16),
+                hidden_states.view(-1, hidden_states.shape[-1]), self.norm_eps).view_as(hidden_states)
+            return hidden_states
         # Self Attention
         hidden_states = rms_norm(hidden_states + self.self_attn(cos_sin=cos_sin, hidden_states=hidden_states), variance_epsilon=self.norm_eps)
         # Fully Connected
