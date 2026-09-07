@@ -110,6 +110,24 @@ At gbs 3072 the card hits its power wall (178/180 W). Note the tradeoff:
 bigger batch fills memory but costs wall time at fixed optimizer-step
 count; paper-faithful runs keep 26041 steps at gbs 2176.
 
+Forward/backward breakdown (server, 1x 5060 Ti, per-GPU batch 1088 = the
+per-GPU load of gbs 2176 on 2 GPUs, compile default; CUDA events, mean of
+10 steps after 3 warmup; `scripts/bench_fwdbwd.py`):
+
+| impl | fwd ms/batch | bwd ms/batch | fwd us/sample | bwd us/sample |
+|---|---|---|---|---|
+| author  | 890.66 | 301.63 | 818.62 | 277.23 |
+| hrmfast | 821.90 | 343.39 | 755.42 | 315.61 |
+
+fwd = the full model call, i.e. BOTH inner passes of the train step (main
++ no-grad target-Q, 48 block executions); bwd = `loss.backward()` only
+(grad part, 16 block-equivalents). Optimizer step and grad all-reduce are
+excluded. Sanity check: fwd+bwd 1192 ms author matches the measured 1.19 s
+train step at this batch size. hrmfast wins 69 ms on fwd (fused SwiGLU +
+LinearResidRmsNorm) but pays back 42 ms on bwd (custom dW path vs cuBLAS);
+net step gain here is ~27 ms — the big hrmfast win is memory (462 MB less
+activations), which is what unlocks gbs 3072.
+
 Consequence for wall time: sudoku-1k (26041 optimizer steps, the paper's
 schedule) takes ~8.8 h on the server. A 1 h run would need ~9x the FLOPs
 of 2x 5060 Ti at the algorithm's fixed compute per sample — not reachable

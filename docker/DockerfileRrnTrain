@@ -1,0 +1,3 @@
+FROM hrm-train:cuda12
+
+WORKDIR /work
