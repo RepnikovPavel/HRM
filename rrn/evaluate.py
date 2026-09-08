@@ -13,9 +13,10 @@ def main():
     p.add_argument("--data", required=True)
     p.add_argument("--gbs", type=int, default=1024)
     p.add_argument("--steps", type=int, default=32)
+    p.add_argument("--hidden-dim", type=int, default=96)
     args = p.parse_args()
 
-    model = SudokuRRN(num_steps=args.steps).cuda()
+    model = SudokuRRN(num_steps=args.steps, hidden_dim=args.hidden_dim).cuda()
     model.load_state_dict(torch.load(args.checkpoint, map_location="cuda"))
     model.eval()
 

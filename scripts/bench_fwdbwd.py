@@ -28,7 +28,12 @@ it = iter(train_loader)
 
 
 def next_batch():
-    _, batch, gbs = next(it)
+    global it
+    try:
+        _, batch, gbs = next(it)
+    except StopIteration:
+        it = iter(train_loader)
+        _, batch, gbs = next(it)
     return {k: v.cuda() for k, v in batch.items()}
 
 

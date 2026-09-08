@@ -25,6 +25,7 @@ def main():
     p.add_argument("--data", required=True)
     p.add_argument("--gbs", type=int, default=1024)
     p.add_argument("--steps", type=int, default=32)
+    p.add_argument("--hidden-dim", type=int, default=96)
     p.add_argument("--no-amp", action="store_true")
     p.add_argument("--compile", type=str, default="", choices=["", "default", "reduce-overhead", "max-autotune-no-cudagraphs"])
     args = p.parse_args()
@@ -35,7 +36,7 @@ def main():
     train_data = SudokuSet(f"{args.data}/train")
     test_data = SudokuSet(f"{args.data}/test")
 
-    model = SudokuRRN(num_steps=args.steps, amp=not args.no_amp).cuda()
+    model = SudokuRRN(num_steps=args.steps, hidden_dim=args.hidden_dim, amp=not args.no_amp).cuda()
     if args.compile:
         model._step = torch.compile(model._step, dynamic=False,
                                     mode=None if args.compile == "default" else args.compile)

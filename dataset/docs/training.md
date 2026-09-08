@@ -78,8 +78,13 @@ cuBLAS microbenchmarks on the model's GEMM shapes:
 
 - cuBLAS bf16 on (M=90304, N=1536..4096, K=512): 34-49 TFLOPS
 - mma.sync bf16 ceiling measured by a register-only microbench
-  (hrmfast/tests/bench_mma_peak.cu): 52.6 TFLOPS — this is the practical
-  tensor-core peak of the 5060 Ti (no tcgen05 on consumer Blackwell)
+  (hrmfast/tests/bench_mma_peak.cu): 52.6 TFLOPS. КРОСС-ПРОВЕРКА 2026-09-08:
+  спецификация 5060 Ti (dense BF16): 47.4 TFLOPS; cuBLAS 8192³ bf16:
+  51.1 (108% от спеки — boost выше номинала). gpubench (WMMA) до фикса
+  давал 182.9 (3.9x от спеки) — баг с dead-code elimination
+  аккумуляторов, исправлено в upstream (commit b3aa28b), после фикса:
+  46.4 на 5060 Ti и 61.8 на 4070 Ti — согласовано со спекой и cuBLAS.
+  Итог: реальный dense BF16 пик 5060 Ti ≈ 47-53 TFLOPS, 4070 Ti ≈ 80
 - measured train step at gbs 1088/GPU: 1.19 s vs 1.10 s predicted from
   summing the cuBLAS kernel times — the code runs at ~95% of the GEMM
   ceiling; it is NOT launch- or fusion-bound (cudagraphs confirmed: 0%)

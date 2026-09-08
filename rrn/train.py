@@ -43,6 +43,7 @@ def main():
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--steps", type=int, default=32)
+    p.add_argument("--hidden-dim", type=int, default=96)
     p.add_argument("--edge-drop", type=float, default=0.4)
     p.add_argument("--eval-interval", type=int, default=1000)
     p.add_argument("--eval-examples", type=int, default=8192)
@@ -63,7 +64,7 @@ def main():
     train_data = SudokuSet(os.path.join(args.data, "train"))
     test_data = SudokuSet(os.path.join(args.data, "test"))
 
-    model = SudokuRRN(num_steps=args.steps, edge_drop=args.edge_drop).cuda()
+    model = SudokuRRN(num_steps=args.steps, hidden_dim=args.hidden_dim, edge_drop=args.edge_drop).cuda()
     if args.compile:
         model._step = torch.compile(model._step, dynamic=False,
                                     mode=None if args.compile == "default" else args.compile)
